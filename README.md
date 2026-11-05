@@ -17,6 +17,8 @@ Turn chair photos into realistic, PBR-textured 3D models with [Tencent Hunyuan3D
 | `chair_studio.py` | Gradio app: upload, generate, 3D preview, zip download |
 | `scripts/run_chairs.py` | Worker: shape generation and parallel PBR texturing |
 | `official_ui.py` | Tencent's own UI with best-quality defaults |
+| `tests/stub_test.py` | GPU-free end-to-end test of the app and worker queue |
+| `CLAUDE.md` | Full technical handoff for Claude Code sessions |
 
 ## Updating
 Edit and push to `main`. Colab picks up the change when you rerun cell 1 or 3, with no notebook re-upload needed.
