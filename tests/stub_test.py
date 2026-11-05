@@ -55,7 +55,9 @@ STUBS = {
         class Hunyuan3DPaintConfig:
             def __init__(self, max_num_view, resolution): pass
         class Hunyuan3DPaintPipeline:
-            def __init__(self, conf): pass
+            def __init__(self, conf):
+                if os.environ.get("STUB_TEXTURE_CRASH"):
+                    raise ModuleNotFoundError("No module named 'bpy'")
             def __call__(self, mesh_path, image_path, output_mesh_path, use_remesh, save_glb):
                 assert os.path.exists(mesh_path), mesh_path
                 time.sleep(1.0)
@@ -93,6 +95,11 @@ assert fake in src and '"/content/outputs"' not in src, "path patch failed: chai
 g = {"GPU_VRAM_GB": 80, "TOOLS_DIR": ROOT, "__name__": "stub_test"}
 exec(compile(src, "chair_studio.py", "exec"), g)
 
+# 1) install check: the stub env has no bpy, so the real check must stop the run with a clear message
+outs = list(g["generate"]([os.path.join(inputs, "armchair.jpg")], "Best", 1, True, False, True))
+assert len(outs) == 1 and outs[0][0].startswith("❌") and "Rerun cell 1" in outs[0][0], outs
+g["missing_tools"] = lambda: ""   # pretend the install is complete from here on
+
 seeds = 2
 t = time.time()
 last = None
@@ -110,4 +117,15 @@ assert viewer.endswith("_textured.glb") and os.path.exists(viewer)
 assert os.path.exists(zip_path)
 out_run = os.path.dirname(os.path.dirname(viewer))
 assert not os.path.exists(os.path.join(out_run, ".queue")), "queue dir should be cleaned up"
-print(f"\n✅ stub test passed: {done} models, 2 workers, fallback ok, {time.time() - t:.1f}s  (tmp: {tmp})")
+
+# 3) both texture workers crash on startup: warn early, still deliver the shapes + zip, no gr.Error
+os.environ["STUB_TEXTURE_CRASH"] = "1"
+for last in g["generate"]([os.path.join(inputs, n + ".jpg") for n in names], "Best", 1, False, False, True):
+    pass
+del os.environ["STUB_TEXTURE_CRASH"]
+log2, _, viewer2, zip2 = last
+assert "Texturing crashed" in log2, log2[-2000:]
+assert "WITHOUT textures" in log2 and viewer2.endswith("_shape_highres.glb") and os.path.exists(zip2)
+
+print(f"\n✅ stub test passed: {done} models, 2 workers, fallback ok, install check ok, "
+      f"texture-crash fallback ok, {time.time() - t:.1f}s  (tmp: {tmp})")

@@ -51,10 +51,30 @@ def list_results():
     return [(os.path.relpath(p, OUT_ROOT), p) for p in found]
 
 
+_tools_ok = False
+def missing_tools():
+    """Quick check that the install finished (catches 'forgot to rerun cells 1 and 2'). Returns an error or ''."""
+    global _tools_ok
+    if _tools_ok:
+        return ""
+    r = subprocess.run([PY, "-c", "import torch, custom_rasterizer, bpy"], cwd=REPO, capture_output=True, text=True)
+    if r.returncode == 0:
+        _tools_ok = True
+        return ""
+    err = (r.stderr.strip().splitlines() or ["unknown error"])[-1]
+    return f"{err}\nThe Hunyuan3D install is incomplete or out of date. Rerun cell 1, then cell 2, then cell 3."
+
+
 def generate(files_in, quality, n_seeds, fast_decode, force_rembg, texture):
     if not files_in:
         raise gr.Error("Upload at least one chair photo first.")
+    problem = missing_tools()
+    if problem:
+        yield "❌ " + problem, gr.update(), gr.update(), gr.update()
+        return
     run_id = time.strftime("%Y%m%d-%H%M%S")
+    while os.path.exists(f"{OUT_ROOT}/{run_id}"):   # two runs in the same second
+        run_id += "b"
     in_dir, out_dir = f"/content/chair_inputs/{run_id}", f"{OUT_ROOT}/{run_id}"
     os.makedirs(in_dir)
     for f in files_in:
@@ -108,6 +128,7 @@ def generate(files_in, quality, n_seeds, fast_decode, force_rembg, texture):
         start_workers()
 
     shape_finished = False
+    tex_warned = False
     yield "\n".join(log), gr.update(), gr.update(), gr.update()
     while True:
         try:
@@ -121,6 +142,10 @@ def generate(files_in, quality, n_seeds, fast_decode, force_rembg, texture):
             open(os.path.join(qdir, "SHAPE_DONE"), "w").close()   # lets texture workers finish
             if texture and not OVERLAP:
                 start_workers()
+        if workers and not tex_warned and all(p.poll() not in (None, 0) for p in workers):
+            tex_warned = True
+            log += ["", "⚠️ Texturing crashed (see the error above). Shapes are still being made and will be",
+                    "   saved without textures. Send the error to get it fixed, then generate again.", ""]
         alive = (not shape_finished) or any(p.poll() is None for p in workers)
         elapsed = f"⏱ {(time.time() - start) / 60:.1f} min"
         yield "\n".join(log[-400:] + ["", elapsed]), gr.update(), gr.update(), gr.update()
@@ -131,13 +156,20 @@ def generate(files_in, quality, n_seeds, fast_decode, force_rembg, texture):
         shutil.rmtree(d, ignore_errors=True)
     shutil.rmtree(qdir, ignore_errors=True)
     finals = sorted(glob.glob(f"{out_dir}/*/*_textured.glb" if texture else f"{out_dir}/*/*_shape_highres.glb"))
-    done = sum("DONE " in l for l in log)
+    shapes_only = False
+    if texture and not finals:
+        # texturing failed completely: still hand over the shapes instead of an empty result
+        finals = sorted(glob.glob(f"{out_dir}/*/*_shape_highres.glb"))
+        shapes_only = bool(finals)
     failed = [l for l in log if "FAILED " in l]
-    log += ["", f"✅ Finished in {(time.time() - start) / 60:.1f} min: {len(finals)} model(s)"
-            + (f", {len(failed)} failed (see lines marked FAILED)" if failed else "")]
+    mins = (time.time() - start) / 60
     if not finals:
+        log += ["", f"❌ No models were produced ({mins:.1f} min). The error is in the log above."]
         yield "\n".join(log[-400:]), gr.update(), gr.update(), gr.update()
-        raise gr.Error("No models were produced; check the progress log.")
+        return
+    log += ["", (f"⚠️ Finished in {mins:.1f} min: {len(finals)} shape(s) WITHOUT textures (texturing failed)"
+                 if shapes_only else f"✅ Finished in {mins:.1f} min: {len(finals)} model(s)")
+            + (f", {len(failed)} failed (see lines marked FAILED)" if failed else "")]
     zip_path = shutil.make_archive(f"{OUT_ROOT}/chairs_{run_id}", "zip", out_dir)
     if os.path.isdir("/content/drive/MyDrive"):
         shutil.copy(zip_path, "/content/drive/MyDrive/")
