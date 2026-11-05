@@ -81,7 +81,9 @@ for n in names:
     Image.new("RGB", (64, 64), "brown").save(os.path.join(inputs, n + ".jpg"))
 
 src = open(os.path.join(ROOT, "chair_studio.py")).read()
-src = src.replace('subprocess.run([sys.executable, "-m", "pip", "install", "-q", "gradio>=5.30,<6"], check=True)', "")
+# skip the gradio install at the top of chair_studio.py (the "_uv = ..." line through its subprocess.run)
+src, n = re.subn(r"_uv = .*?check=True\)\n", "", src, count=1, flags=re.S)
+assert n == 1, "install patch failed: chair_studio.py's gradio install line changed?"
 src = src.replace('REPO, PY, OUT_ROOT = "/content/Hunyuan3D-2.1", "/content/h3d-env/bin/python", "/content/outputs"',
                   f'REPO, PY, OUT_ROOT = {fake!r}, sys.executable, {os.path.join(tmp, "out")!r}')
 src = src.replace("/content/chair_inputs", os.path.join(tmp, "chair_inputs"))

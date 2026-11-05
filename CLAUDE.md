@@ -81,6 +81,7 @@ Gradio generate()  ──spawns──►  run_chairs.py --role shape      (1 pro
 - `gradio_app.py` runs FastAPI + uvicorn (no `share`), with args `--host --port --low_vram_mode --enable_flashvdm --mc_algo`.
 
 ## Install decisions (`scripts/install.sh`)
+- **uv only, always with `--python /content/h3d-env/bin/python`.** Colab presets `UV_SYSTEM_PYTHON` (and similar `UV_*` vars), which make a bare `uv pip install` ignore `VIRTUAL_ENV` and install into the system Python (3.13 on newer runtimes), where torch 2.5.1 has no wheels. `install.sh` unsets those vars, creates the env from a uv-managed Python 3.10 (`UV_PYTHON_PREFERENCE=only-managed`), rebuilds it if an earlier run left a non-3.10 env, and pins torch/numpy as constraints for the requirements step. `chair_studio.py` installs gradio with `uv pip install --python sys.executable` (falls back to pip only if uv is missing).
 - Strips `--extra-index-url` lines (Tencent/Aliyun mirrors are slow from Colab, and uv would prefer them) and `deepspeed` (training only).
 - `basicsr` is built with `--no-build-isolation-package basicsr` because its setup imports torch.
 - `custom_rasterizer`: `uv pip install --no-build-isolation .` with `CUDA_HOME` set to a CUDA **12.x** toolkit. If the system nvcc isn't 12.x, it uses `/usr/local/cuda-12*` or installs `cuda-toolkit-12-4` from NVIDIA's apt repo. `TORCH_CUDA_ARCH_LIST` is set to the GPU's compute capability.

@@ -3,8 +3,11 @@
 Run from the notebook with `%run -i` so it can read the notebook's settings.
 Part of https://github.com/Solamente0/hunyuan3d-google-colab
 """
-import subprocess, sys
-subprocess.run([sys.executable, "-m", "pip", "install", "-q", "gradio>=5.30,<6"], check=True)
+import subprocess, sys, os
+import shutil
+_uv = shutil.which("uv") or shutil.which(os.path.expanduser("~/.local/bin/uv"))
+subprocess.run([_uv, "pip", "install", "-q", "--python", sys.executable, "gradio>=5.30,<6"] if _uv
+               else [sys.executable, "-m", "pip", "install", "-q", "gradio>=5.30,<6"], check=True)
 
 import os, shutil, glob, threading, time, queue
 import gradio as gr
