@@ -99,6 +99,7 @@ Gradio generate()  ──spawns──►  run_chairs.py --role shape      (1 pro
 8. Gradio 5 file access: `launch(allowed_paths=[OUT_ROOT])` is required for `Model3D` and the zip download.
 
 ## How to work on this repo
+- **Always merge into `main`** (Omid's standing instruction). Whatever branch a session is told to work on, every finished change also lands on `main` (fast-forward, or merge if needed) and is pushed, without asking first. No pull requests unless he asks for one.
 - **Workflow**: edit, run `python tests/stub_test.py` (it must pass), commit, push to `main`. Then tell Omid which cell to rerun:
   - `chair_studio.py`, `scripts/run_chairs.py`, `official_ui.py` → rerun **cell 3** (or 4), which pulls first
   - `setup_env.py` → rerun cell 1
