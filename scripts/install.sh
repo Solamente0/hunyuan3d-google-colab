@@ -5,7 +5,7 @@ set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 cd /content
 
-echo "▶ [1/8] System libraries (needed by Blender's bpy)"
+echo "▶ [1/8] System libraries (OpenGL/X libs for opencv and open3d)"
 apt-get update -qq 2>&1 | grep -v "^W: " || true   # hide harmless warnings from Colab's extra apt repos
 apt-get install -y -qq libxrender1 libxi6 libxkbcommon0 libsm6 libgl1 libegl1 libglib2.0-0 > /dev/null
 
@@ -40,8 +40,9 @@ $UVPIP torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1 --index-url https://do
 $UVPIP setuptools wheel ninja pybind11 "numpy==1.24.4"
 
 echo "▶ [5/8] Python requirements"
-# Drop the China-hosted mirrors (slow from Colab) and deepspeed (training only)
-grep -v -e '^--extra-index-url' -e '^deepspeed' requirements.txt > /tmp/h3d_req.txt
+# Drop the China-hosted mirrors (slow from Colab), deepspeed (training only) and bpy: bpy==4.0 is gone
+# from PyPI, and only the training-data renderer (hy3dshape/tools/render) uses it, not inference.
+grep -v -e '^--extra-index-url' -e '^deepspeed' -e '^bpy' requirements.txt > /tmp/h3d_req.txt
 # Keep the CUDA torch build and numpy from step 4 (stop the requirements from swapping them)
 printf 'torch==2.5.1\ntorchvision==0.20.1\ntorchaudio==2.5.1\nnumpy==1.24.4\n' > /tmp/h3d_pins.txt
 $UVPIP -r /tmp/h3d_req.txt -c /tmp/h3d_pins.txt --no-build-isolation-package basicsr
@@ -90,7 +91,7 @@ EOF
 
 echo "▶ Self-test"
 $PY - <<'EOF'
-import torch, custom_rasterizer, bpy
+import torch, custom_rasterizer
 print("torch", torch.__version__, "| CUDA available:", torch.cuda.is_available(), "|", torch.cuda.get_device_name(0))
 EOF
 echo "✅ Install finished. Run cell 3."

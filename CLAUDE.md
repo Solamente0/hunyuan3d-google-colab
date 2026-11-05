@@ -37,7 +37,7 @@ Colab **A100 80 GB** with High-RAM (167 GB system RAM, ~235 GB disk). The code a
 | `tests/stub_test.py` | any Python 3.10+ with Pillow + gradio 5 | GPU-free end-to-end test with stubbed models |
 
 ### Why two Pythons
-Colab ships Python 3.12, but upstream pins packages that only have 3.10 wheels (`bpy==4.0`, `numpy==1.24.4`, `open3d==0.18.0`, `pymeshlab==2022.2.post3`). All model code therefore runs in `/content/h3d-env` (Python 3.10). The Gradio UI runs in the Colab kernel and only spawns subprocesses.
+Colab ships Python 3.12/3.13, but upstream pins packages that only have 3.10-era wheels (`numpy==1.24.4`, `open3d==0.18.0`, `pymeshlab==2022.2.post3`). All model code therefore runs in `/content/h3d-env` (Python 3.10). The Gradio UI runs in the Colab kernel and only spawns subprocesses.
 
 ### `%run -i` contract
 The notebook passes settings as kernel globals, and scripts read them with `globals().get(...)`: `TOOLS_DIR`, `CACHE_WEIGHTS_IN_DRIVE`, `GPU_VRAM_GB`, `LOW_VRAM`, `PUBLIC_LINK`, `FORCE_LOW_VRAM_MODE`. Keep these names stable, or update the notebook in the same commit.
@@ -82,16 +82,16 @@ Gradio generate()  ──spawns──►  run_chairs.py --role shape      (1 pro
 
 ## Install decisions (`scripts/install.sh`)
 - **uv only, always with `--python /content/h3d-env/bin/python`.** Colab presets `UV_SYSTEM_PYTHON` (and similar `UV_*` vars), which make a bare `uv pip install` ignore `VIRTUAL_ENV` and install into the system Python (3.13 on newer runtimes), where torch 2.5.1 has no wheels. `install.sh` unsets those vars, creates the env from a uv-managed Python 3.10 (`UV_PYTHON_PREFERENCE=only-managed`), rebuilds it if an earlier run left a non-3.10 env, and pins torch/numpy as constraints for the requirements step. `chair_studio.py` installs gradio with `uv pip install --python sys.executable` (falls back to pip only if uv is missing).
-- Strips `--extra-index-url` lines (Tencent/Aliyun mirrors are slow from Colab, and uv would prefer them) and `deepspeed` (training only).
+- Strips `--extra-index-url` lines (Tencent/Aliyun mirrors are slow from Colab, and uv would prefer them), `deepspeed` (training only) and `bpy` (`bpy==4.0` was removed from PyPI; it is only imported by `hy3dshape/tools/render/render.py`, the training-data renderer, never by inference). If it's ever needed, Blender hosts `bpy-4.0.0-cp310` at https://download.blender.org/pypi/bpy/.
 - `basicsr` is built with `--no-build-isolation-package basicsr` because its setup imports torch.
 - `custom_rasterizer`: `uv pip install --no-build-isolation .` with `CUDA_HOME` set to a CUDA **12.x** toolkit. If the system nvcc isn't 12.x, it uses `/usr/local/cuda-12*` or installs `cuda-toolkit-12-4` from NVIDIA's apt repo. `TORCH_CUDA_ARCH_LIST` is set to the GPU's compute capability.
 - The mesh painter is compiled with the venv's python (`pybind11 --includes`, `sysconfig EXT_SUFFIX`), because upstream's `compile_mesh_painter.sh` calls `python3-config`, which uv venvs lack.
 - Blackwell GPUs (compute capability ≥10) are rejected in `setup_env.py`, since torch 2.5.1/cu124 doesn't support them.
 
 ## Known risks: check these first when something breaks
-1. `uv pip install -r requirements` resolution on Python 3.10, e.g. `tb_nightly`, `pymeshlab`, `bpy==4.0` wheels, or `cupy-cuda12x`.
+1. `uv pip install -r requirements` on Python 3.10. Without `bpy`, the full set was dry-resolved for 3.10/manylinux_2_28 and succeeds; the remaining risks are sdist builds (`basicsr`).
 2. CUDA extension build: nvcc/torch CUDA mismatch, missing headers, arch list.
-3. `bpy` import needs X/GL libs; `install.sh` apt-installs `libxrender1 libxi6 libxkbcommon0 libsm6 libgl1 libegl1 libglib2.0-0`.
+3. X/GL libs for opencv/open3d; `install.sh` apt-installs `libxrender1 libxi6 libxkbcommon0 libsm6 libgl1 libegl1 libglib2.0-0`.
 4. FlashVDM on the 2.1 VAE. The fallback exists, but confirm the speedup on a real run.
 5. `hf_xet`/`hf_transfer` with the pinned `huggingface-hub==0.30.2`.
 6. The model repo may need an HF token and accepted terms (README metadata has `extra_gated_eu_disallowed`). `setup_env.py` reads `HF_TOKEN` from Colab secrets.
