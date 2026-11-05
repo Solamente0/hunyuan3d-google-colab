@@ -37,14 +37,15 @@ UVPIP="uv pip install -q --python $PY"   # always install into the 3.10 env, nev
 
 echo "▶ [4/8] PyTorch 2.5.1 + CUDA 12.4"
 $UVPIP torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cu124
-$UVPIP setuptools wheel ninja pybind11 "numpy==1.24.4"
+# setuptools 82+ removed pkg_resources, which pytorch_lightning 1.9.5 (texture model) still imports
+$UVPIP "setuptools<82" wheel ninja pybind11 "numpy==1.24.4"
 
 echo "▶ [5/8] Python requirements"
 # Drop the China-hosted mirrors (slow from Colab), deepspeed (training only) and bpy (installed below:
 # bpy 4.0 is no longer on PyPI)
 grep -v -e '^--extra-index-url' -e '^deepspeed' -e '^bpy' requirements.txt > /tmp/h3d_req.txt
 # Keep the CUDA torch build and numpy from step 4 (stop the requirements from swapping them)
-printf 'torch==2.5.1\ntorchvision==0.20.1\ntorchaudio==2.5.1\nnumpy==1.24.4\n' > /tmp/h3d_pins.txt
+printf 'torch==2.5.1\ntorchvision==0.20.1\ntorchaudio==2.5.1\nnumpy==1.24.4\nsetuptools<82\n' > /tmp/h3d_pins.txt
 $UVPIP -r /tmp/h3d_req.txt -c /tmp/h3d_pins.txt --no-build-isolation-package basicsr
 $UVPIP hf_transfer hf_xet -c /tmp/h3d_pins.txt
 # Blender's bpy 4.0 (Python 3.10) from Blender's own index; the texture pipeline imports it
@@ -106,7 +107,7 @@ EOF
 
 echo "▶ Self-test"
 $PY - <<'EOF'
-import torch, custom_rasterizer, bpy
+import torch, custom_rasterizer, bpy, pytorch_lightning
 print("torch", torch.__version__, "| CUDA available:", torch.cuda.is_available(), "|", torch.cuda.get_device_name(0))
 EOF
 echo "✅ Install finished. Run cell 3."

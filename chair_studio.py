@@ -57,7 +57,7 @@ def missing_tools():
     global _tools_ok
     if _tools_ok:
         return ""
-    r = subprocess.run([PY, "-c", "import torch, custom_rasterizer, bpy"], cwd=REPO, capture_output=True, text=True)
+    r = subprocess.run([PY, "-c", "import torch, custom_rasterizer, bpy, pytorch_lightning"], cwd=REPO, capture_output=True, text=True)
     if r.returncode == 0:
         _tools_ok = True
         return ""
