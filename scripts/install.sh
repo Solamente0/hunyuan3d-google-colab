@@ -49,23 +49,35 @@ $UVPIP -r /tmp/h3d_req.txt -c /tmp/h3d_pins.txt --no-build-isolation-package bas
 $UVPIP hf_transfer hf_xet -c /tmp/h3d_pins.txt
 
 echo "▶ [6/8] Compiling the CUDA rasterizer and mesh painter"
-NVCC_MAJOR=$(/usr/local/cuda/bin/nvcc --version 2>/dev/null | grep -oP 'release \K[0-9]+' || echo 0)
-if [ "$NVCC_MAJOR" = "12" ]; then
-  export CUDA_HOME=/usr/local/cuda
-else
-  CAND=$(ls -d /usr/local/cuda-12* 2>/dev/null | tail -1 || true)
-  if [ -n "$CAND" ]; then
-    export CUDA_HOME=$CAND
-  else
-    echo "  System CUDA isn't 12.x; installing the CUDA 12.4 toolkit (a few minutes)"
-    UBU=$(. /etc/os-release; echo ${VERSION_ID//./})
+# torch 2.5.1 is built with CUDA 12.4, so the extensions need a CUDA 12.x compiler. A different 12.x minor
+# version is fine (torch only refuses a different major version, e.g. Colab's newer CUDA 13).
+nvcc_major() { "$1/bin/nvcc" --version 2>/dev/null | grep -oP 'release \K[0-9]+' || echo 0; }
+CUDA_HOME=""
+for c in /usr/local/cuda $(ls -d /usr/local/cuda-12* 2>/dev/null | sort -V); do
+  [ "$(nvcc_major "$c")" = "12" ] && CUDA_HOME=$c
+done
+if [ -z "$CUDA_HOME" ]; then
+  # NVIDIA's apt repo for Ubuntu 24.04 starts at 12.5 (no 12.4). Take the oldest 12.x it offers, and
+  # only the compiler + the headers torch extensions need (a fraction of the full ~4 GB toolkit).
+  UBU=$(. /etc/os-release; echo ${VERSION_ID//./})
+  if ! dpkg -s cuda-keyring > /dev/null 2>&1; then
     wget -q "https://developer.download.nvidia.com/compute/cuda/repos/ubuntu${UBU}/x86_64/cuda-keyring_1.1-1_all.deb" -O /tmp/cuda-keyring.deb
     dpkg -i /tmp/cuda-keyring.deb > /dev/null
-    apt-get update -qq
-    apt-get install -y -qq cuda-toolkit-12-4 > /dev/null
-    export CUDA_HOME=/usr/local/cuda-12.4
   fi
+  apt-get update -qq 2>&1 | grep -v "^W: " || true
+  CU=""
+  for m in 4 5 6 8 9; do
+    # (no `| grep -q`: under pipefail its early exit makes apt-cache fail with SIGPIPE)
+    if [[ "$(apt-cache policy "cuda-nvcc-12-$m" 2>/dev/null)" == *"Candidate: "[0-9]* ]]; then CU=12-$m; break; fi
+  done
+  [ -n "$CU" ] || { echo "❌ No CUDA 12.x compiler in NVIDIA's apt repo for ubuntu${UBU}"; exit 1; }
+  echo "  Colab's CUDA isn't 12.x; installing the CUDA ${CU/-/.} compiler + headers (a few minutes)"
+  apt-get install -y -qq --no-install-recommends cuda-nvcc-$CU cuda-cudart-dev-$CU cuda-cccl-$CU \
+    cuda-nvrtc-dev-$CU cuda-profiler-api-$CU cuda-nvtx-$CU libcublas-dev-$CU libcusparse-dev-$CU \
+    libcusolver-dev-$CU libcurand-dev-$CU > /dev/null
+  CUDA_HOME=/usr/local/cuda-${CU/-/.}
 fi
+export CUDA_HOME
 export PATH=$CUDA_HOME/bin:$PATH
 echo "  using CUDA at $CUDA_HOME for GPU arch ${TORCH_CUDA_ARCH_LIST:-auto}"
 

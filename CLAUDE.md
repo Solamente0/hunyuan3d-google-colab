@@ -84,13 +84,14 @@ Gradio generate()  ──spawns──►  run_chairs.py --role shape      (1 pro
 - **uv only, always with `--python /content/h3d-env/bin/python`.** Colab presets `UV_SYSTEM_PYTHON` (and similar `UV_*` vars), which make a bare `uv pip install` ignore `VIRTUAL_ENV` and install into the system Python (3.13 on newer runtimes), where torch 2.5.1 has no wheels. `install.sh` unsets those vars, creates the env from a uv-managed Python 3.10 (`UV_PYTHON_PREFERENCE=only-managed`), rebuilds it if an earlier run left a non-3.10 env, and pins torch/numpy as constraints for the requirements step. `chair_studio.py` installs gradio with `uv pip install --python sys.executable` (falls back to pip only if uv is missing).
 - Strips `--extra-index-url` lines (Tencent/Aliyun mirrors are slow from Colab, and uv would prefer them), `deepspeed` (training only) and `bpy` (`bpy==4.0` was removed from PyPI; it is only imported by `hy3dshape/tools/render/render.py`, the training-data renderer, never by inference). If it's ever needed, Blender hosts `bpy-4.0.0-cp310` at https://download.blender.org/pypi/bpy/.
 - `basicsr` is built with `--no-build-isolation-package basicsr` because its setup imports torch.
-- `custom_rasterizer`: `uv pip install --no-build-isolation .` with `CUDA_HOME` set to a CUDA **12.x** toolkit. If the system nvcc isn't 12.x, it uses `/usr/local/cuda-12*` or installs `cuda-toolkit-12-4` from NVIDIA's apt repo. `TORCH_CUDA_ARCH_LIST` is set to the GPU's compute capability.
+- `custom_rasterizer`: `uv pip install --no-build-isolation .` with `CUDA_HOME` set to a CUDA **12.x** toolkit (any 12 minor works; torch only rejects a different major). Colab is now Ubuntu 24.04 with a non-12 CUDA, and NVIDIA's ubuntu2404 apt repo has no 12.4, so `install.sh` picks the oldest 12.x with a real apt candidate (12.5 today) and installs only `cuda-nvcc` plus the dev headers torch extensions need (~2.9 GB, not the full toolkit). Verified in an Ubuntu 24.04 + gcc 13 container: 12.5 builds `custom_rasterizer` and the mesh painter against torch 2.5.1+cu124 in ~2 min, and both import. `TORCH_CUDA_ARCH_LIST` is set to the GPU's compute capability.
+- Bash gotcha: the script runs under `set -o pipefail`, so never write `cmd | grep -q ...` as a test (grep's early exit kills `cmd` with SIGPIPE and the test fails). Capture output with `$(...)` first.
 - The mesh painter is compiled with the venv's python (`pybind11 --includes`, `sysconfig EXT_SUFFIX`), because upstream's `compile_mesh_painter.sh` calls `python3-config`, which uv venvs lack.
 - Blackwell GPUs (compute capability ≥10) are rejected in `setup_env.py`, since torch 2.5.1/cu124 doesn't support them.
 
 ## Known risks: check these first when something breaks
 1. `uv pip install -r requirements` on Python 3.10. Without `bpy`, the full set was dry-resolved for 3.10/manylinux_2_28 and succeeds; the remaining risks are sdist builds (`basicsr`).
-2. CUDA extension build: nvcc/torch CUDA mismatch, missing headers, arch list.
+2. CUDA extension build: verified offline with CUDA 12.5 (see above), but not yet on Colab itself.
 3. X/GL libs for opencv/open3d; `install.sh` apt-installs `libxrender1 libxi6 libxkbcommon0 libsm6 libgl1 libegl1 libglib2.0-0`.
 4. FlashVDM on the 2.1 VAE. The fallback exists, but confirm the speedup on a real run.
 5. `hf_xet`/`hf_transfer` with the pinned `huggingface-hub==0.30.2`.
