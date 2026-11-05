@@ -5,7 +5,7 @@ set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 cd /content
 
-echo "▶ [1/8] System libraries (OpenGL/X libs for opencv and open3d)"
+echo "▶ [1/8] System libraries (OpenGL/X libs for Blender's bpy, opencv and open3d)"
 apt-get update -qq 2>&1 | grep -v "^W: " || true   # hide harmless warnings from Colab's extra apt repos
 apt-get install -y -qq libxrender1 libxi6 libxkbcommon0 libsm6 libgl1 libegl1 libglib2.0-0 > /dev/null
 
@@ -40,13 +40,16 @@ $UVPIP torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1 --index-url https://do
 $UVPIP setuptools wheel ninja pybind11 "numpy==1.24.4"
 
 echo "▶ [5/8] Python requirements"
-# Drop the China-hosted mirrors (slow from Colab), deepspeed (training only) and bpy: bpy==4.0 is gone
-# from PyPI, and only the training-data renderer (hy3dshape/tools/render) uses it, not inference.
+# Drop the China-hosted mirrors (slow from Colab), deepspeed (training only) and bpy (installed below:
+# bpy 4.0 is no longer on PyPI)
 grep -v -e '^--extra-index-url' -e '^deepspeed' -e '^bpy' requirements.txt > /tmp/h3d_req.txt
 # Keep the CUDA torch build and numpy from step 4 (stop the requirements from swapping them)
 printf 'torch==2.5.1\ntorchvision==0.20.1\ntorchaudio==2.5.1\nnumpy==1.24.4\n' > /tmp/h3d_pins.txt
 $UVPIP -r /tmp/h3d_req.txt -c /tmp/h3d_pins.txt --no-build-isolation-package basicsr
 $UVPIP hf_transfer hf_xet -c /tmp/h3d_pins.txt
+# Blender's bpy 4.0 (Python 3.10) from Blender's own index; the texture pipeline imports it
+# (hy3dpaint/DifferentiableRenderer/mesh_utils.py)
+$UVPIP "bpy==4.0.0" -c /tmp/h3d_pins.txt --find-links https://download.blender.org/pypi/bpy/
 
 echo "▶ [6/8] Compiling the CUDA rasterizer and mesh painter"
 # torch 2.5.1 is built with CUDA 12.4, so the extensions need a CUDA 12.x compiler. A different 12.x minor
@@ -103,7 +106,7 @@ EOF
 
 echo "▶ Self-test"
 $PY - <<'EOF'
-import torch, custom_rasterizer
+import torch, custom_rasterizer, bpy
 print("torch", torch.__version__, "| CUDA available:", torch.cuda.is_available(), "|", torch.cuda.get_device_name(0))
 EOF
 echo "✅ Install finished. Run cell 3."
